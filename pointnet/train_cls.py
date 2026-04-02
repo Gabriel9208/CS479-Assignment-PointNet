@@ -24,9 +24,9 @@ def step(points, labels, model):
     loss = None
     preds = None
 
+    points, labels = points.to(device), labels.to(device)
     output, T3, T64 = model(points)
-    loss = nn.CrossEntropyLoss()(output, labels)
-    loss += get_orthogonal_loss(T3)
+    loss = F.cross_entropy(output, labels)
     loss += get_orthogonal_loss(T64)
     preds = torch.argmax(output, dim=1)
     return loss, preds
@@ -35,7 +35,7 @@ def step(points, labels, model):
 def train_step(points, labels, model, optimizer, train_acc_metric, scaler=None, use_amp=False):
     optimizer.zero_grad()
     
-    with torch.cuda.amp.autocast(enabled=use_amp):
+    with torch.amp.autocast('cuda', enabled=use_amp):
         loss, preds = step(points, labels, model)
     
     if use_amp:

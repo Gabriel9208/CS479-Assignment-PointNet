@@ -29,13 +29,21 @@ def step(points, pc_labels, class_labels, model):
     loss = None
     logits = None
     preds = None
+
+    points, pc_labels, class_labels = points.to(device), pc_labels.to(device), class_labels.to(device)
+    logits, T3, T64, local64 = model(points)
+    loss = F.cross_entropy(logits, pc_labels)
+    loss += get_orthogonal_loss(T64)
+    preds = torch.argmax(logits, dim=1)
+
+
     return loss, logits, preds
 
 
 def train_step(points, pc_labels, class_labels, model, optimizer, train_acc_metric, scaler=None, use_amp=False):
     optimizer.zero_grad()
     
-    with torch.cuda.amp.autocast(enabled=use_amp):
+    with torch.amp.autocast('cuda', enabled=use_amp):
         loss, logits, preds = step(
             points, pc_labels, class_labels, model
         )
@@ -84,7 +92,7 @@ def main(args):
     model = model.to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
+    scaler = torch.amp.GradScaler(device="cuda", enabled=args.amp)
     scheduler = torch.optim.lr_scheduler.MultiStepLR(
         optimizer, milestones=[30, 80], gamma=0.5
     )
