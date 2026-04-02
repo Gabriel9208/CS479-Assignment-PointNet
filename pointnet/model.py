@@ -68,6 +68,25 @@ class PointNetFeat(nn.Module):
             self.stn64 = STNKd(k=64)
 
         # point-wise mlp
+        self.mlp1 = nn.Sequential(
+            nn.Conv1d(3, 64, kernel_size=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Conv1d(64, 64, kernel_size=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU()
+        )
+        self.mlp2 = nn.Sequential(
+            nn.Conv1d(64, 64, kernel_size=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Conv1d(64, 128, kernel_size=1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Conv1d(128, 1024, kernel_size=1),
+            nn.BatchNorm1d(1024),
+            nn.ReLU()
+        )
         # TODO : Implement point-wise mlp model based on PointNet Architecture.
 
     def forward(self, pointcloud):
@@ -80,7 +99,21 @@ class PointNetFeat(nn.Module):
         """
 
         # TODO : Implement forward function.
-        pass
+        T3 = None
+        T64 = None
+        X = pointcloud
+        if self.input_transform:
+            T3 = self.stn3(X.transpose(-2, -1))
+            X = torch.bmm(X, T3)
+        X = X.transpose(-2, -1)
+        X = self.mlp1(X)
+        if self.feature_transform:
+            T64 = self.stn64(X)
+            X = torch.bmm(X.transpose(-2, -1), T64)
+            X = X.transpose(-2, -1)
+        X = self.mlp2(X)
+        X = torch.max(X, dim=2)[0]
+        return X, T3, T64
 
 
 class PointNetCls(nn.Module):
@@ -92,6 +125,17 @@ class PointNetCls(nn.Module):
         self.pointnet_feat = PointNetFeat(input_transform, feature_transform)
         
         # returns the final logits from the max-pooled features.
+        self.mlp = nn.Sequential(
+            nn.Conv1d(1024, 512, kernel_size=1),
+            nn.BatchNorm1d(512),
+            nn.ReLU(),
+            nn.Dropout(p=0.3),
+            nn.Conv1d(512, 256, kernel_size=1),
+            nn.BatchNorm1d(256),
+            nn.ReLU(),
+            nn.Dropout(p=0.3),
+            nn.Conv1d(256, num_classes, kernel_size=1)
+        )
         # TODO : Implement MLP that takes global feature as an input and return logits.
 
     def forward(self, pointcloud):
@@ -103,7 +147,11 @@ class PointNetCls(nn.Module):
             - ...
         """
         # TODO : Implement forward function.
-        pass
+        X, T3, T64 = self.pointnet_feat(pointcloud)
+        X = X.unsqueeze(2)
+        X = self.mlp(X)
+        X = X.squeeze(2)
+        return X, T3, T64
 
 
 class PointNetPartSeg(nn.Module):
